@@ -1,0 +1,14 @@
+[Unit]
+Description=MTG proxy service
+After=syslog.target
+
+[Service]
+User={{ mtgproxy.service_user }}
+Group={{ mtgproxy.service_user }}
+ExecStart=/usr/local/bin/mtg run -b {{ mtgproxy.listen_host }}:{{ mtgproxy.listen_port }} {% if mtgproxy.secret != "" %}{{ mtgproxy.secret }}{% elif generate_new_secret %}{{ mtg_generated_secret.stdout }}{% else %}{{ mtg_existing_secret.stdout }}{% endif %}
+
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=multi-user.target

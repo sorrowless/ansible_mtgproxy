@@ -1,0 +1,21 @@
+---
+# defaults file for mtgproxy
+mtgproxy: {}
+mtgproxy_defaults:
+  version: 1.0.2
+  arch: linux-amd64
+  service_user: root
+  create_user: false
+  listen_host: 0.0.0.0
+  listen_port: 3128
+  # If set, this port will be returned in result connection string. Useful in
+  # case you proxied some port to the mtgproxy port
+  real_port: ""
+  # Types are: simple, secured, tls
+  secret_type: tls
+  secret_tls_domain: google.com
+  # We could simply put the secret value and then it will be used instead of
+  # generating new one
+  secret: ""
+  # Will regenerate secret if forced
+  force: false

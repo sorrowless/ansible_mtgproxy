@@ -1,0 +1,5 @@
+---
+- name: Restart mtgproxy
+  service:
+    name: mtgproxy
+    state: restarted

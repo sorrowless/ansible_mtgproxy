@@ -1,0 +1,88 @@
+---
+- name: Override default data with user one
+  set_fact:
+    mtgproxy: "{{ mtgproxy_defaults | combine(mtgproxy, recursive=True) }}"
+  tags:
+    - always
+
+- name: Check mtgproxy existing systemd service
+  stat:
+    path: /etc/systemd/system/mtgproxy.service
+  register: mtg_config
+
+- name: Try to get existed secret from service file
+  shell:
+    cmd: |
+      grep ExecStart mtgproxy.service | awk '{ print $NF }'
+  args:
+    chdir: /etc/systemd/system
+  register: mtg_existing_secret
+  when: mtg_config.stat.exists
+  changed_when: False
+
+- name: Get mtg distribution
+  get_url:
+    url: "https://github.com/9seconds/mtg/releases/download/v{{ mtgproxy.version }}/mtg-{{ mtgproxy.arch }}"
+    dest: /usr/local/bin/mtg
+    mode: 0755
+    owner: root
+    group: root
+
+- name: Ensure mtg user to run upon
+  user:
+    name: "{{ mtgproxy.service_user }}"
+  when: mtgproxy.create_user
+
+- name: Get type of existing secret
+  set_fact:
+    exist_type: "{%- if mtg_existing_secret.stdout.startswith('ee') -%}tls{%- elif mtg_existing_secret.stdout.startswith('dd') -%}secured{%- else -%}simple{%- endif -%}"
+  when: not mtg_existing_secret.skipped is defined
+
+- name: Check if we need to generate new secret
+  set_fact:
+    generate_new_secret: '{%- if mtgproxy.secret != "" -%}False{%- elif mtgproxy.force -%}True{%- elif mtg_existing_secret is defined and (exist_type is defined and exist_type == mtgproxy.secret_type) -%}False{%- else -%}True{%- endif -%}'
+- name: Generate new secret if needed
+  command:
+    cmd: |
+      {% if mtgproxy.secret_type == 'tls' -%}
+        /usr/local/bin/mtg generate-secret -c {{ mtgproxy.secret_tls_domain }} tls
+      {% else -%}
+        /usr/local/bin/mtg generate-secret {{ mtgproxy.secret_type }}
+      {% endif %}
+  register: mtg_generated_secret
+  when: generate_new_secret
+
+- name: Ensure systemd service unit
+  template:
+    src: mtgproxy.service
+    dest: /etc/systemd/system/mtgproxy.service
+    owner: root
+    group: root
+    mode: 0644
+  register: mtgproxy_service
+  notify:
+    - Restart mtgproxy
+
+- name: Enable systemd service
+  systemd:
+    name: mtgproxy.service
+    state: started
+    daemon_reload: yes
+    enabled: yes
+
+- name: Set target port fact
+  set_fact:
+    target_port: "{{ mtgproxy.real_port if mtgproxy.real_port != '' else mtgproxy.listen_port }}"
+
+- name: Set real target secret fact
+  shell:
+    cmd: |
+      grep ExecStart mtgproxy.service | awk '{ print $NF }'
+  args:
+    chdir: /etc/systemd/system
+  register: target_secret
+  changed_when: False
+
+- name: Show targed connection string
+  debug:
+    msg: "tg://proxy?port={{ target_port }}&secret={{ target_secret.stdout }}&server={{ ansible_host }}"
